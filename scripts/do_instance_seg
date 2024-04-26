@@ -1,0 +1,88 @@
+#!/bin/bash
+#
+# Performs the instance segmentation
+
+# Source the functions from functions.sh
+source "$SCRIPT_DIR/utils/functions.sh"
+
+# EDIT: Define the script, its path and arguments
+script_name="sbatch"
+script_path="" # empty because sbatch is in the $PATH
+script_args=""
+log_name="STEP05_instance_segmentation"  # If blank, the log name will be the script name
+mode="bg" # Default mode is background
+
+script_code() {
+  echo "Running..."
+  ############################################
+  ## Put the script specific code here
+  ## This executes in the project directory ##
+  ############################################
+
+  # Define the paths
+  SCRATCH_DIR="$SCRATCH_ROOT/$project_name"
+  PROJECT_DIR="$project_path"
+
+  # Define the download directory
+  downsample_dir="$SCRATCH_ROOT/$project_name/downsample"
+
+  # Get the largest number from the file names
+  file_count=$(ls "$downsample_dir" | grep -o '[0-9]\+' | sort -n | tail -n 1)
+
+  # Remove any leading zeros in file_count
+  file_count=$(echo $file_count | sed 's/^0*//')
+
+  # Print the file count
+  echo "Largest number in file names in $downsample_dir: $file_count"
+  echo ""
+
+  if [ "$file_count" -eq 0 ]
+  then
+    echo "NO FILES IN $downsample_dir"
+    exit 1
+  fi
+
+  array_range="0-$file_count"
+
+  # Prompt the user to edit the array range
+  echo "********************************************"
+  echo "The array range is set to $array_range"
+  echo "Do you want to change the array range?"
+  echo "Example: 10-80,085,100,126 (no spaces)"
+  echo "Do you want to change the array range? (y/N)"
+  read yn
+  if [ -z "$yn" ]; then
+      yn='n'
+  fi
+  case $yn in
+      [Yy]* ) echo "Enter the new array range:"; read array_range;;
+      [Nn]* | * ) ;;
+  esac
+
+  job_name="${project_name}_instance_seg"
+
+  # Set the name of the sbatch_log_dirs which are defined in the array job #sbatch directives
+  # Used by execute task to add to log file
+  sbatch_log_dir="/work/scratch-pw3/ucfacc2/sbatch_logs/is"
+
+  # Compose the script arguments
+  script_args="--array=$array_range --job-name $job_name --export=ALL,project_dir=$PROJECT_DIR,scratch_dir=$SCRATCH_DIR $SCRIPT_DIR/jobs/run_points2trees_array"
+
+  echo "sbatch directives for job logs:"
+  echo "#SBATCH -o /work/scratch-pw3/ucfacc2/sbatch_logs/is/%x_%j_%A_%a.out"
+  echo "#SBATCH -e /work/scratch-pw3/ucfacc2/sbatch_logs/is/%x_%j_%A_%a.err"
+
+  ############################################
+  ## End of the script specific code here   ##
+  ############################################
+}
+
+# Call the functions defined in functions.sh
+# This needs to be in the right order.
+parse_arguments "$@"
+check_project_name
+check_projects_file
+change_directory
+script_code
+generate_command
+run_command

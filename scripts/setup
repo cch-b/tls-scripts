@@ -1,0 +1,211 @@
+#!/bin/bash
+
+echo "This script sets up the TLS tree processing environment."
+echo "It should be run in the directory where the setup script is located."
+echo "Before running the script, edit the config.txt in the config directory"
+echo "to define the projects you want to work, use config-template.txt as a guide."
+echo "If you add a new project to the config.txt file, you will need to run this script again."
+echo ""
+echo "The script performs the following actions:"
+echo "- creates a tls_env file in the config directory and adds aliases to it."
+echo "- adds the tls_env file to the user's .bashrc file."
+echo "- adds the script directory to the user's PATH in their ~/.bashrc file."
+echo "- creates a scratch directory for the user."
+echo "- creates a directory hierarchy for each project in the user's scratch directory."
+echo "- sets up the TMPDIR environment variable for the user and creates the directory"
+echo "  in their scratch directory."
+echo "- creates a tls-log directory in the user's home directory."
+echo "- creates a sbatch_logs directory in the user's scratch directory for sbatch logs."
+echo ""
+
+# Ask if the user wishes to continue
+echo "Do you wish to continue? (y/n)"
+read -r continue
+if [ "$continue" != "y" ]; then
+    echo "Exiting."
+    exit 0
+fi
+echo ""
+
+# Set up the script directory
+# Get the directory in which this script is running
+script_directory="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+echo "Please enter your script directory path, enter to accept default (default: $script_directory):"
+read -r script_dir
+if [ -z "$script_dir" ]
+then
+    script_dir=$script_directory
+fi
+echo "The script directory is: $script_dir"
+echo ""
+
+# Set the config directory
+config_directory="$script_dir"/../config
+# Expand the path of the config directory
+config_directory=$(realpath "$config_directory")
+echo "Please enter your config directory path, enter to accept default (default: $config_directory):"
+read -r config_dir
+if [ -z "$config_dir" ]
+then
+    config_dir=$config_directory
+fi
+echo "The config directory is: $config_dir"
+echo ""
+
+# Set the scratch directory
+# This location is as suggested by JASMIN
+scratch_directory="/work/scratch-pw3/$USER"
+echo "Please enter your scratch directory, enter to accept default (default: $scratch_directory):"
+read -r scratch_root
+if [ -z "$scratch_root" ]
+then
+    scratch_root=$scratch_directory
+fi
+echo "The scratch directory is: $scratch_root"
+echo ""
+
+# Function to delete the GENERATED aliases
+delete_generated_aliases() {
+    awk '/# GENERATED ALIASES/,/# END/{next}1' "$1" > temp && mv temp "$1"
+}
+
+append_generated_aliases() {
+    if ! grep -q "# GENERATED ALIASES" "$1"; then
+        echo "# GENERATED ALIASES" >> "$1"
+    fi
+    while IFS= read -r line || [[ -n "$line" ]]
+    do
+        # Extract the project name and path
+        project_name=$(printf "%s\n" "$line" | awk -F ',' '{print $1}' | xargs)
+        project_path=$(printf "%s\n" "$line" | awk -F ',' '{for(i=2; i<=NF; i++) printf $i" "}' | xargs)
+
+        # Create the alias command
+        alias_command="alias cd_$project_name='cd $project_path'"
+
+        # Append the alias to the project_env file
+        echo "$alias_command" >> "$1"
+        echo "Created alias: $alias_command"
+
+        # Define the scratch path for the project
+        scratch_path="$scratch_root/$project_name"
+
+        # Define the log path for the project
+        log_path="$log_dir/$project_name"
+
+        # Create a directory for the project logs
+        mkdir -p "$log_path"
+
+        # Define scratch_name
+        scratch_name="${project_name}_scratch"
+
+        # Create an alias for the project scratch path
+        alias_command="alias cd_$scratch_name='cd $scratch_path'"
+        echo "$alias_command" >> "$1"
+        echo "Created alias: $alias_command"
+
+        # Create an alias for the project log path
+        alias_command="alias cd_${project_name}_logs='cd $log_path'"
+        echo "$alias_command" >> "$1"
+        echo "Created alias: $alias_command"
+
+        # Create environment variable names
+        project_path_var="${project_name}_path"
+        scratch_path_var="${project_name}_scratch_path"
+        project_log_var="${project_name}_log_path"
+
+        # Create environment variables for the project and scratch paths
+        # in the form project_name=project_path and project_name_scratch=scratch_path
+        { echo "export $project_path_var=$project_path"
+          echo "export $scratch_path_var=$scratch_path"
+          echo "export $project_log_var=$log_path"
+        } >> "$1"
+
+    done < "$2"
+
+    # Set up some global environment variables and aliases
+    echo "export SCRATCH_ROOT=$scratch_root" >> "$1"
+    export SCRATCH_ROOT=$scratch_root # Set the environment variable for the current session
+    echo "Created environment variable: SCRATCH_ROOT=$scratch_root"
+    echo "export CONFIG_DIR=$config_dir" >> "$1"
+    export CONFIG_DIR=$config_dir # Set the environment variable for the current session
+    echo "export CONFIG_FILE=$config_file" >> "$1"
+    echo "Created environment variable: CONFIG_DIR=$config_dir"
+    echo "export SCRIPT_DIR=$script_dir" >> "$1"
+    echo "Created environment variable: SCRIPT_DIR=$script_dir"
+    # Append the LOG_ROOT environment variable
+    echo "export LOG_ROOT=$log_dir" >> "$1"
+    echo "Created environment variable: LOG_ROOT=$log_dir"
+    echo "" >> "$1"
+    echo ""
+
+    echo "alias cd_scratch='cd $scratch_root'" >> "$1"
+    echo "Created alias: cd_scratch='cd $scratch_root'"
+    # Create an alias for cd_logs
+    echo "alias cd_logs='cd $log_dir'" >> "$1"
+    echo "alias cd_sbatch_logs='cd $scratch_root/sbatch_logs'" >> "$1"
+    echo ""
+    echo "# END" >> "$1"
+}
+
+# Create a log directory in the user's directory
+log_dir=~/tls_logs
+mkdir -p "$log_dir"
+
+# Create a symbolic link in the log directory to $script_dir/python/notebook_utils.py
+ln -s "$script_dir/python/notebook_utils.py" "$log_dir/notebook_utils.py"
+
+# Default location of config.txt is in the config directory
+config_file="$config_dir/config.txt"
+
+project_env_file="$config_dir/tls_env"
+echo "Creating $project_env_file"
+# Check if project_env file exists, if not create it and add the USER ALIASES section
+if [ ! -f "$project_env_file" ]; then
+    touch "$project_env_file"
+    echo "# USER ALIASES" >> "$project_env_file"
+fi
+
+# Delete the GENERATED aliases
+delete_generated_aliases "$project_env_file"
+
+# Append the GENERATED aliases
+append_generated_aliases "$project_env_file" "$config_file"
+
+# Get the path to the user's .bashrc file
+bashrc_file="$HOME/.bashrc"
+
+# Check if the .bashrc file sources the project_env
+if ! grep -q "source $project_env_file" "$bashrc_file"; then
+    # If not, append the source line to the .bashrc file
+    echo "" >> "$bashrc_file"
+    echo "# Set up the tree processing environment" >> "$bashrc_file"
+    echo "source $project_env_file" >> "$bashrc_file"
+    echo "Added 'source $project_env_file' to $bashrc_file"
+fi
+
+
+# Check if the $PATH contains the script_dir
+if [[ ":$PATH:" != *":$script_dir:"* ]]; then
+    # If not, prepend script_dir to the $PATH and export it
+    echo "export PATH=\"$script_dir:\$PATH\"" >> "$bashrc_file"
+    echo "Added '$script_dir' to the beginning of PATH in $bashrc_file"
+fi
+
+# Sets up TMPDIR for the user as per JASMIN instructions, see:
+# https://help.jasmin.ac.uk/docs/getting-started/storage/#avoid-inadvertently-writing-to-tmp
+if ! grep -q "export TMPDIR=$scratch_root/tmp" "$bashrc_file"; then
+    echo "export TMPDIR=$scratch_root/tmp" >> "$bashrc_file"
+    echo "Added 'export TMPDIR=$scratch_root/tmp' to $bashrc_file"
+fi
+
+# create the directory if needed
+mkdir -p $TMPDIR
+
+# Ask if the user wants to create the scratch directories by
+# running the make_scratch_dirs script
+echo "Creating the project directories, this is non-destructive and can be run multiple times."
+bash "$script_dir"/make_project_dirs "$config_file"
+
+echo "The setup script has completed."
+echo "Please run 'source ~/.bashrc' to update your environment."
+echo "Enter 'alias' to see the new aliases."

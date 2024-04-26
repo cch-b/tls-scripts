@@ -1,0 +1,59 @@
+#!/bin/bash
+#
+# Script to generate tree figures from TLS data
+
+# Source the functions from functions.sh
+source "$SCRIPT_DIR/utils/functions.sh"
+
+# EDIT: Define the script, its path and arguments
+script_name="tree_figs.py"
+script_path="$SCRIPT_DIR/python"
+script_args="" # see below
+log_name="STEP11_generate_tree_figs"  # If blank, the log name will be the script name
+mode="bg" # Default mode is background
+
+script_code() {
+  echo "Running..."
+  ############################################
+  ## Put the script specific code here
+  ## This executes in the project directory ##
+  ############################################
+
+  # Activate the conda environment
+  conda activate pdal
+
+  # Define the directories
+
+  cloud_dir="$SCRATCH_ROOT/$project_name/clouds/"
+  attributes_file="$project_path/$project_name.tree-attributes.csv"
+  fig_dir="$SCRATCH_ROOT/$project_name/figures/"
+
+# Get the date and time
+date_time=$(date +'%Y-%m-%d_%H-%M-%S')
+
+# Define the name prefix with project_name and date_time
+name_prefix="${project_name}_${date_time}"
+
+  #python /gws/nopw/j04/nceo_generic/nceo_ucl/TLS/tools/python/tree_figs.py -c /path/to/clouds # path to pc
+  #-o ~/. # path to out dir
+  #--name <name> # prefix to call plots
+  #--wood-leaf # wood and leaf colours as opposed to random for each tree
+  #--db # point at the db from step 7
+
+   # Compose the script arguments
+  script_args="--cloud_dir $cloud_dir --odir $fig_dir --name $name_prefix --db $attributes_file --wood-leaf"
+
+  ############################################
+  ## End of the script specific code here   ##
+  ############################################
+}
+
+# Call the functions defined in functions.sh
+# This needs to be in the right order.
+parse_arguments "$@"
+check_project_name
+check_projects_file
+change_directory
+script_code
+generate_command
+run_command

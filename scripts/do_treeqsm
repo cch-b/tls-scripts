@@ -1,0 +1,48 @@
+#!/bin/bash
+#
+# This script is used to submit the treeqsm jobs to the queue
+
+# Source the functions from functions.sh
+source "$SCRIPT_DIR/utils/functions.sh"
+
+# EDIT: Define the script, its path and arguments
+script_name="submit_jobs-run_qsm-array.py"
+script_path="$SCRIPT_DIR/jobs"
+script_args="" # see below
+log_name="STEP07_treeqsm"  # If blank, the log name will be the script name
+mode="bg" # Default mode is background
+
+script_code() {
+  echo "Running..."
+  ############################################
+  ## Put the script specific code here
+  ## This executes in the project directory ##
+  ############################################
+
+
+  # Activate the conda environment
+  conda activate octave
+
+  # Define the directories
+  intermediate_dir="$SCRATCH_ROOT/$project_name/models/intermediate/inputs"
+
+  job_script="$SCRIPT_DIR/jobs/run_qsm_array.sh"
+
+
+   # Compose the script arguments
+  script_args="--input $intermediate_dir --project $project_name --job $job_script --user $USER"
+
+  ############################################
+  ## End of the script specific code here   ##
+  ############################################
+}
+
+# Call the functions defined in functions.sh
+# This needs to be in the right order.
+parse_arguments "$@"
+check_project_name
+check_projects_file
+change_directory
+script_code
+generate_command
+run_command

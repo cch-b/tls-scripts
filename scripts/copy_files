@@ -1,0 +1,46 @@
+#!/bin/bash
+
+# Call as: ./copy_files --project_path /path/to/my_project --dirs dir1,dir2,dir3 --scratch_path /path/to/scratch
+
+# Initialize our own variables
+project_path=""
+dirs=""
+scratch_path=""
+
+# Parse the arguments
+while (( "$#" )); do
+  case "$1" in
+    --project_path)
+        project_path="$2"
+        shift 2
+        ;;
+    --dirs)
+        IFS=',' read -r -a dirs <<< "$2"
+        shift 2
+        ;;
+    --scratch_path)
+        scratch_path="$2"
+        shift 2
+        ;;
+    *)
+        echo "Invalid option $1"
+        exit 1
+        ;;
+  esac
+done
+
+# Check if the correct number of arguments are provided
+if [ -z "$project_path" ] || [ ${#dirs[@]} -eq 0 ] || [ -z "$scratch_path" ]; then
+    echo "Error: Invalid number of arguments"
+    echo "Usage: $0 --project_path <project_path> --dirs <dir1,dir2,...> --scratch_path <scratch_path>"
+    exit 1
+fi
+
+# Define the source directory
+src="$scratch_path"
+
+# Iterate over the directories and copy each one
+for dir in "${dirs[@]}"; do
+    echo "Copying $dir from $src to $project_path"
+    rsync -az "$src/$dir" "$project_path"
+done

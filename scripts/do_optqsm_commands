@@ -1,0 +1,46 @@
+#!/bin/bash
+#
+# This script generates the commands to run the optqsm model
+
+# Source the functions from functions.sh
+source "$SCRIPT_DIR/utils/functions.sh"
+
+# EDIT: Define the script, its path and arguments
+script_name="generate_optqsm_commands.py"
+script_path="/gws/nopw/j04/nceo_generic/nceo_ucl/TLS/wx_test/jobs/qsm/job_scripts"
+script_args="" # see below
+log_name="STEP08_optqsm_commands"  # If blank, the log name will be the script name
+mode="bg" # Default mode is background
+
+script_code() {
+  echo "Running..."
+  ############################################
+  ## Put the script specific code here
+  ## This executes in the project directory ##
+  ############################################
+
+
+  # Activate the conda environment
+  conda activate octave
+
+  # Define the directories
+  intermediate_dir="$SCRATCH_ROOT/$project_name/models/intermediate/results"
+  commands_dir="$SCRATCH_ROOT/$project_name/models/optqsm/commands"
+
+   # Compose the script arguments
+  script_args="--input_path $intermediate_dir --output_path $commands_dir --verbose"
+
+  ############################################
+  ## End of the script specific code here   ##
+  ############################################
+}
+
+# Call the functions defined in functions.sh
+# This needs to be in the right order.
+parse_arguments "$@"
+check_project_name
+check_projects_file
+change_directory
+script_code
+generate_command
+run_command

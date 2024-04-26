@@ -1,0 +1,56 @@
+#!/bin/bash
+#
+# This script is used to touch all the files in a project scratch directory
+# so that they are not automatically removed after 28 days.
+
+
+
+# Parse command-line options
+while (( "$#" )); do
+  case "$1" in
+    -p|--proj)
+      project=$2
+      shift
+      ;;
+    -h|--help)
+      echo "Usage: ./update_dates [-p|--proj] [-h|--help]"
+      echo "-p|--proj: Project to update"
+      echo "-h|--help: Display this help message"
+      exit 0
+      ;;
+    --) # end argument parsing
+      shift
+      break
+      ;;
+    -*|--*=) # unsupported flags
+      echo "Error: Unsupported flag $1" >&2
+      exit 1
+      ;;
+    *) # preserve positional arguments
+      PARAMS="$PARAMS $1"
+      shift
+      ;;
+  esac
+done
+
+# If project is not set, display an error message and exit
+if [ -z "$project" ]; then
+  echo "Error: Project not set" >&2
+  exit 1
+fi
+
+project_dir="$SCRATCH_ROOT/$project"
+
+# Check if the project directory exists, exit if it does not
+if [ ! -d "$project_dir" ]; then
+  echo "Error: Project directory $project_dir does not exist" >&2
+  exit 1
+fi
+
+# Touch all files in the project directory
+find "$project_dir" -type f -exec touch {} \;
+
+# touch all directories in the project directory
+find "$project_dir" -type d -exec touch {} \;
+
+echo "Updated dates for project files in: $project_dir"

@@ -1,0 +1,73 @@
+#!/bin/bash
+#
+# Performs the instance segmentation
+
+# Source the functions from functions.sh
+source "$SCRIPT_DIR/utils/functions.sh"
+
+script_code() {
+  echo "Running..."
+  ############################################
+  ## Put the script specific code here
+  ## This executes in the project directory ##
+  ############################################
+
+  # Define the paths
+  SCRATCH_DIR="$SCRATCH_ROOT/$project_name"
+  PROJECT_DIR="$project_path"
+  cloud_dir="$SCRATCH_DIR/clouds"
+
+  # Define the download directory
+  downsample_dir="$SCRATCH_ROOT/$project_name/downsample"
+
+  # Get the largest number from the file names
+  file_count=$(ls "$downsample_dir" | grep -o '[0-9]\+' | sort -n | tail -n 1)
+
+  # Check if file_count is empty or not a number
+  if ! [[ $file_count =~ ^[0-9]+$ ]]; then
+    file_count=0
+  fi
+
+  # Remove any leading zeros in file_count
+  file_count=$(echo $file_count | sed 's/^0*//')
+
+  if [ "$file_count" -eq 0 ]
+  then
+    echo "NO FILES IN $downsample_dir"
+    exit 1
+  fi
+
+  # Initialize an empty array to hold the missing clouds
+  missing_clouds=()
+
+  # Loop from 0 to file_count
+  for (( i=0; i<=$file_count; i++ )); do
+    # Pad the count to three decimals
+    padded_i=$(printf "%03d" $i)
+
+    # If no file matches the pattern in any subdirectory of CLOUD_DIR
+    if [ -z "$(find "$cloud_dir" -name "${padded_i}_T*on.ply")" ]; then
+      # Add the count to the missing_clouds list
+      missing_clouds+=($i)
+    fi
+  done
+
+  # Print the missing_clouds list with comma as separator
+  IFS=","
+  echo "Missing clouds: ${missing_clouds[*]}"
+  IFS=" "
+
+
+
+
+  ############################################
+  ## End of the script specific code here   ##
+  ############################################
+}
+
+# Call the functions defined in functions.sh
+# This needs to be in the right order.
+parse_arguments "$@"
+check_project_name
+check_projects_file
+script_code

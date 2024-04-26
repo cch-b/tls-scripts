@@ -1,0 +1,16 @@
+[tool.ruff]
+line-length = 120
+[tool.ruff.lint]
+select = [
+    "A",  # prevent using keywords that clobber python builtins
+    "B",  # bugbear: security warnings
+    "E",  # pycodestyle
+    "F",  # pyflakes
+    "ISC",  # implicit string concatenation
+    "UP",  # alert you when better syntax is available in your python version
+    "RUF",  # the ruff developer's own rules
+]
+ignore = ["D100", "D103", "D203"]
+[tool.ruff.format]
+# Prefer single quotes over double quotes.
+quote-style = "single"

@@ -1,0 +1,43 @@
+#!/bin/bash
+#
+# This script is used to rename log files in a project directory
+# to show they are done.
+
+ # Parse command line arguments
+# If no arguments are provided, print the help message
+if [ "$#" -eq 0 ]; then
+  echo "Usage: $0 --proj <project_name> [--mode <mode>]"
+  echo "       --proj, -p: Project name"
+  echo "       --help, -h: Print this help message"
+  exit 1
+fi
+
+# Parse the arguments
+while (( "$#" )); do
+  case "$1" in
+    --proj|-p)
+      project_name="$2"
+      shift 2
+      ;;
+    *)
+      echo "Error: Invalid argument"
+      echo "Usage: $0 --proj <project_name>"
+      echo "       -h, --help: Print this help message"
+      exit 1
+  esac
+done
+
+# Set the directory
+log_dir="$LOG_ROOT/$project_name"
+
+# Rename the files:
+for log_file in $log_dir/STEP*.log
+do
+  if [[ $log_file != *_DONE_*.log ]]; then
+    step_number=$(basename $log_file | cut -c5-6)
+    new_log_file="${log_file/STEP${step_number}/STEP${step_number}_DONE}"
+    echo "Old log file: $log_file"
+    echo "New log file: $new_log_file"
+    mv $log_file $new_log_file
+  fi
+done

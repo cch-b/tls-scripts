@@ -1,0 +1,442 @@
+#!/bin/bash
+
+# Default values
+mode="bg" # Default mode is foreground
+script_path=""
+script_args=""
+
+
+parse_arguments() {
+  # Parses the command line arguments.
+  while (( "$#" )); do
+    case "$1" in
+      --mode)
+        mode="$2"
+        shift 2
+        ;;
+        --project|-p)
+        project_name="$2"
+        shift 2
+        ;;
+        --project_path|-P)
+        project_path="$2"
+        shift 2
+        ;;
+
+      --script_path)
+        script_path="$2"  # Update script_path if provided
+        shift 2
+        ;;
+      --script_name)
+        script_name="$2"
+        shift 2
+        ;;
+      --script_args)
+        # Treat the entire argument as a single argument, even if it contains spaces
+        shift 1
+        script_args="$@"
+        break
+        ;;
+      --log_name)
+        log_name="$2"
+        shift 2
+        ;;
+      *)
+        echo "Error: Invalid argument in run_script.sh: $1 $2"
+        echo "Usage: $0 --script_name <script_name> [--mode <mode>] [--proj <project>] [--script_path <script_path>]
+         [--script_args
+        <script_args>] [--log_name <log_name>]"
+        exit 1
+    esac
+  done
+}
+
+print_start_message() {
+  # Empty the log file
+  > $log_file
+  # Prints the start message to the log file and terminal.
+  echo "RUNNING: $script_name" | tee -a "$log_file"
+  echo "Project: $project_name" | tee -a "$log_file"
+  echo "Project Path: $project_path" | tee -a "$log_file"
+  print_separator dash lt
+  echo "Arguments: $script_args" | tee -a "$log_file"
+  echo "Script Path: $script_path" | tee -a "$log_file"
+  echo "Username: $USER" | tee -a $log_file
+  echo "Date Run: $(date '+%Y-%m-%d %H:%M:%S')" | tee -a "$log_file"
+  if [ "$mode" = "fg" ]; then
+    echo "Mode: Foreground" | tee -a "$log_file"
+  else
+    echo "Mode: Background" | tee -a "$log_file"
+  fi
+  echo "" | tee -a "$log_file"
+}
+
+set_full_script_path() {
+  # Sets the full script path. If the script path is empty, it uses `which` to find the command and extract the path.
+  # If the script path is a symbolic link, it resolves it to the actual path.
+  # If the script path is empty use which to find the command and extract the path
+  if [ -z "$script_path" ]; then
+    script_path=$(dirname $(which "$script_name"))
+  fi
+
+  # If the script path is a symbolic link, resolve it to the actual path
+  if [ -L "$script_path" ]; then
+    script_path=$(readlink -f "$script_path")
+  fi
+
+  # Combine the script path and script name
+  full_script_path="$script_path/$script_name"
+}
+
+check_script_exists() {
+  # Checks if the script exists. If it doesn't, it prints an error message and exits.
+  if [ ! -f "$full_script_path" ]; then
+    echo "Error: $full_script_path does not exist"
+    exit 1
+  fi
+}
+
+set_log_file() {
+  # If the log name is not provided, use the script name
+  if [ -z "$log_name" ]; then
+    log_file="$LOG_ROOT/$project_name/$(basename "$script_name").log"
+  else
+    log_file="$LOG_ROOT/$project_name/$log_name.log"
+  fi
+
+  # Make sure log directory exists
+  mkdir -p $(dirname "$log_file")
+
+  # Extract the step number from the log name
+  step_number=${log_name:4:2}
+
+  # Remove any existing log file for the current step
+  rm -f $LOG_ROOT/$project_name/STEP${step_number}*.log
+  rm -f $LOG_ROOT/$project_name/STEP${step_number}_DONE_*.log
+
+  # Use parameter expansion to append "_DONE" after the STEPNN for
+  # new_log_file which is used to store the log file after the script has finished
+  new_log_file="${log_file/STEP${step_number}/STEP${step_number}_DONE}"
+
+}
+
+separator_equal="======================================="
+separator_dash="---------------------------------------"
+
+print_separator() {
+  local separator_type="$1"
+  local output_mode="$2"
+
+  if [ "$separator_type" = "dash" ]; then
+    if [ "$output_mode" = "lt" ]; then
+      echo "$separator_dash" | tee -a "$log_file"
+    elif [ "$output_mode" = "l" ]; then
+      echo "$separator_dash" >> "$log_file"
+    elif [ "$output_mode" = "t" ]; then
+      echo "$separator_dash"
+    fi
+  else
+    if [ "$output_mode" = "lt" ]; then
+      echo "$separator_equal" | tee -a "$log_file"
+    elif [ "$output_mode" = "l" ]; then
+      echo "$separator_equal" >> "$log_file"
+    elif [ "$output_mode" = "t" ]; then
+      echo "$separator_equal"
+    fi
+  fi
+}
+
+generate_command() {
+  # Generates the command that will be run.
+  # If the script is executable, it runs it directly. Otherwise, it runs it with bash.
+  # If the script is a Python script, it runs it with Python.
+  if [[ "$full_script_path" == *.py ]]; then
+    command="python $full_script_path $script_args"
+  elif [ -x "$full_script_path" ]; then
+    command="$full_script_path $script_args"
+  else
+    command="bash $full_script_path $script_args"
+  fi
+}
+
+monitor_background_job() {
+  pid=$1
+  # Create a temporary script file
+  tmp_script=$(mktemp)
+
+  # Write the commands to the temporary script file
+  cat << EOF > "$tmp_script"
+    # Export the log_file variable
+    export log_file="$log_file"
+
+    SECONDS=0
+    minute_counter=0
+    while kill -0 $pid 2>/dev/null; do
+      sleep 10
+      minute_counter=\$((minute_counter+1))
+      if [ \$minute_counter -eq 10 ]; then
+        echo "$(date '+%Y-%m-%d-%H:%M:%S') - process $pid is still running in the background." >> $log_file
+        minute_counter=0
+      fi
+    done
+
+    # Calculate hours, minutes, and seconds
+    total_time=\$SECONDS
+    hours=\$((total_time / 3600))
+    minutes=\$(( (total_time % 3600) / 60 ))
+    seconds=\$((total_time % 60))
+
+    echo "" >> $log_file
+    echo "Background task completed." >> $log_file
+    echo "" >> $log_file
+    echo "End time: $(date '+%Y-%m-%d %H:%M:%S')" >> $log_file
+    printf "Total running time: %02d:%02d:%02d\n" \$hours \$minutes \$seconds >> $log_file
+    echo $separator_equal >> $log_file
+    echo "" >> $log_file
+    echo "" >> $log_file
+
+    echo "Moving $log_file to $new_log_file" >> $log_file
+
+    # Rename the log file
+    mv -f "$log_file" "$new_log_file"
+
+    # Update the status and upload the reports
+    python $SCRIPT_DIR/python/update_status.py --project-name $project_name --step-name "$step" --step-status "done" --command "$command"
+    nohup $SCRIPT_DIR/make_report --upload --delay 1 >> /dev/null 2>&1 &
+EOF
+
+  # Make the temporary script file executable
+  chmod +x "$tmp_script"
+
+  # Run the temporary script file with nohup
+  nohup bash "$tmp_script" &> /dev/null &
+}
+
+monitor_sbatch_queue() {
+  job_id=$1
+
+  # Create a temporary script file
+  tmp_script=$(mktemp)
+
+  # Write the commands to the temporary script file
+  cat << EOF > "$tmp_script"
+    # Export the log_file variable
+    export log_file="$log_file"
+    SECONDS=0
+    minute_counter=0
+    while true; do
+      # Get the list of jobs for the current user
+      job_list=\$(squeue -u $USER --format='%.20i %.30j')
+      # Check if the job ID is in the list
+      if echo "\$job_list" | grep -q "$job_id"; then
+        # If the job ID is in the list, sleep for a minute and then continue the loop
+        sleep 60
+        minute_counter=\$((minute_counter+1))
+        if [ \$minute_counter -eq 60 ]; then
+          echo "$(date '+%Y-%m-%d_%H:%M:%S') - Job $job_id is still on the queue." >> $log_file
+          minute_counter=0
+        fi
+      else
+        # If the job ID is not in the list, it means the job has finished
+        echo "Job $job_id has finished." >> $log_file
+        break
+      fi
+    done
+
+    # Calculate hours, minutes, and seconds
+    total_time=\$SECONDS
+    hours=\$((total_time / 3600))
+    minutes=\$(( (total_time % 3600) / 60 ))
+    seconds=\$((total_time % 60))
+
+    echo "" >> $log_file
+    echo "Queued jobs completed." >> $log_file
+    echo "" >> $log_file
+    echo "End time: $(date '+%Y-%m-%d %H:%M:%S')" >> $log_file
+    printf "Total running time: %02d:%02d:%02d\n" \$hours \$minutes \$seconds >> $log_file
+    echo $separator_equal >> $log_file
+    echo "" >> $log_file
+    echo "" >> $log_file
+
+    # Update the status and generate the reports
+    python $SCRIPT_DIR/python/update_status.py --project-name $project_name --step-name "$step" --step-status "done" --command "$command"
+    nohup $SCRIPT_DIR/make_report --upload --delay 1 >> /dev/null 2>&1 &
+
+    echo "Moving $log_file to $new_log_file" >> $log_file
+
+    # Rename the log file
+    mv -f "$log_file" "$new_log_file"
+
+EOF
+
+  # Make the temporary script file executable
+  chmod +x "$tmp_script"
+
+  # Run the temporary script file with nohup
+  nohup bash "$tmp_script" &> /dev/null &
+}
+
+print_end_message() {
+  # Prints the end message to the log file and terminal.
+  total_time=$SECONDS
+  hours=$((total_time / 3600))
+  minutes=$(( (total_time % 3600) / 60 ))
+  seconds=$((total_time % 60))
+  echo "" | tee -a "$log_file"
+  echo ""
+  echo "End time: $(date '+%Y-%m-%d %H:%M:%S')" | tee -a "$log_file"
+  printf "Total running time: %02d:%02d:%02d\n" $hours $minutes $seconds | tee -a "$log_file"
+  print_separator equal lt
+  echo "" | tee -a "$log_file"
+  echo "" | tee -a "$log_file"
+  echo "Moving $log_file to $new_log_file" | tee -a "$log_file"
+  # Rename the log file
+  mv -f "$log_file" "$new_log_file"
+}
+
+confirm_execution() {
+  tput bold
+  # Print the command
+  echo "Command to be executed: $command"
+  # Reset the terminal colors back to the default
+  tput sgr0
+  echo ""
+
+  # Ask for confirmation
+  read -p "Do you want to proceed? [y/N] " response
+  case "$response" in
+    [yY][eE][sS]|[yY])
+      # If yes, continue execution
+      echo "Executing the command..."
+      echo ""
+      ;;
+    *)
+      # If no or empty response, exit
+      echo "Execution cancelled by user."
+      exit 1
+      ;;
+  esac
+}
+
+run_sbatch() {
+  SECONDS=0
+  # Do the same thing regardless if the mode is bg or fg
+    # Run the sbatch command and capture the output
+  sbatch_output=$($command)
+  # Get the process ID of the sbatch command
+  job_id=$(echo "$sbatch_output" | grep -oP '(?<=Submitted batch job )\d+')
+  # Log the sbatch command and its output
+  echo "Executing: $command"| tee -a "$log_file"
+  python $SCRIPT_DIR/python/update_status.py --project-name "$project_name" --step-name "$step" --step-status "running" --command "$command" | tee -a "$log_file"
+  nohup "$SCRIPT_DIR"/make_report --upload --delay 1 >> /dev/null 2>&1 &
+  echo "sbatch output: $sbatch_output" | tee -a "$log_file"
+  echo "The output is being redirected to $log_file"
+  echo "" | tee -a "$log_file"
+  echo "" | tee -a "$log_file"
+  echo "Output" >> "$log_file"
+  print_separator dash l
+  echo "" | tee -a "$log_file"
+  echo "To monitor progress, run: tail -n 30 -f $log_file" | tee -a "$log_file"
+  echo "To monitor the sbatch queue, run: squeue -u $USER" | tee -a "$log_file"
+  echo "To cancel the job, run: scancel $job_id" | tee -a "$log_file"
+  echo "" | tee -a "$log_file"
+  print_separator dash l
+  echo "" | tee -a "$log_file"
+  # Call the monitor_sbatch_queue_bg function to monitor the job
+  monitor_sbatch_queue "$job_id"
+}
+
+run_in_foreground() {
+  echo "Executing: $command" | tee -a "$log_file"
+  echo "Output is also logged in $log_file"
+  echo "" | tee -a $log_file
+  echo "Output"| tee -a "$log_file"
+  python "$SCRIPT_DIR"/python/update_status.py --project-name "$project_name" --step-name "$step" --step-status "running" --command "$command" | tee -a "$log_file"
+  nohup "$SCRIPT_DIR"/make_report --upload >> /dev/null 2>&1 &
+  print_separator dash lt
+  ($command) 2>&1 | tee -a "$log_file"
+  if [[ $command == *"array"* ]]; then
+    # if is a job sent to the SLURM queue
+    echo "Monitoring array jobs" | tee -a "$log_file"
+    if [[ $command == *"run_optqsm"* ]]; then
+      array_id=${project}_optqsm
+    elif [[ $command == *"run_treeqsm"* ]]; then
+      array_id=${project}_qsm
+    elif [[ $command == *"run_fsct"* ]]; then
+      array_id=${project}_semantic
+    elif  [[ $command == *"run_points2trees"* ]]; then
+      array_id=${project}_instance
+    fi
+    monitor_sbatch_queue "$array_id"
+else
+  # Update the status
+  python "$SCRIPT_DIR"/python/update_status.py --project-name "$project_name" --step-name "$step" --step-status "done"
+  nohup "$SCRIPT_DIR"/make_report --upload --delay 5 >> /dev/null 2>&1 &
+  print_end_message
+fi
+}
+
+run_in_background() {
+  python "$SCRIPT_DIR"/python/update_status.py --project-name "$project_name" --step-name "$step" --step-status "running" --command "$command" | tee -a "$log_file"
+  nohup "$SCRIPT_DIR"/make_report --upload --delay 1 >> /dev/null 2>&1 &
+  nohup $command >> "$log_file" 2>&1 &
+  pid=$!
+  echo "Executing: $command" | tee -a "$log_file"
+  echo "To execute it directly copy and run in the project directory" | tee -a "$log_file"
+  echo ""
+  echo "The output is being redirected to $log_file"
+  echo "" | tee -a "$log_file"
+  echo "The process ID is: $pid" | tee -a "$log_file"
+  echo "" | tee -a "$log_file"
+  echo "Output" | tee -a "$log_file"
+  print_separator dash lt
+  echo "To monitor progress, run: tail -n 30 -f $log_file" | tee -a "$log_file"
+  echo "To kill the process, run: kill $pid" | tee -a "$log_file"
+  echo "To check if the process is still running, run: ps -p $pid"  | tee -a "$log_file"
+  echo "To continually check the process, run: watch -n 1 'ps -p $pid'"   | tee -a "$log_file"
+  echo ""
+  print_separator dash lt
+  if [[ $command == *"array"* ]]; then
+    # if is a job sent to the SLURM queue
+    echo "Monitoring array jobs" | tee -a "$log_file"
+    if [[ $command == *"run_optqsm"* ]]; then
+      array_id=${project}_optqsm
+    elif [[ $command == *"run_treeqsm"* ]]; then
+      array_id=${project}_qsm
+    elif [[ $command == *"run_fsct"* ]]; then
+      array_id=${project}_semantic_segmentation
+    elif  [[ $command == *"run_points2trees"* ]]; then
+      array_id=${project}_instance_segmentation
+    fi
+    monitor_sbatch_queue "$array_id"
+  else
+    monitor_background_job "$pid"
+  fi
+}
+
+run_script() {
+  SECONDS=0
+  # Remove the full path from log_file
+  log_name=$(basename "$log_file")
+  step="${log_name%.log}"    # Remove trailing .log
+  step="${step//_/ }"        # Replace underscores with spaces
+
+  if [[ $command == *"sbatch"* ]]; then
+    run_sbatch
+  elif [ "$mode" = "fg" ]; then
+    run_in_foreground
+  else
+    run_in_background
+  fi
+}
+
+
+# Call the functions
+parse_arguments "$@"
+set_full_script_path
+set_log_file
+print_start_message
+check_script_exists
+generate_command
+confirm_execution
+run_script

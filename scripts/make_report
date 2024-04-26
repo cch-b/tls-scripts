@@ -1,0 +1,105 @@
+#!/bin/bash
+#
+# This script is used to upload a report to a Google Sheet
+
+# Initialize upload argument as false
+upload=false
+
+# Initialize delay argument as 0
+delay=0
+
+# Initialize update_from_logs argument as false
+update_from_logs=false
+
+# Set the log directory
+log_dir="$LOG_ROOT"
+
+# Parse command-line options
+while (( "$#" )); do
+  case "$1" in
+    -u|--upload)
+      upload=true
+      shift
+      ;;
+    -d|--delay)
+      delay=$2
+      shift 2
+      ;;
+    -ul|--update-from-logs)
+      update_from_logs=true
+      shift
+      ;;
+    -d|--debug)
+      debug=true
+      shift
+      ;;
+    -h|--help)
+      echo "Usage: ./upload_report [-u|--upload] [-d|--delay] [-ul|--update-from-logs] [-h|--help]"
+      echo "-u|--upload: Upload the report to Google Sheets"
+      echo "-d|--delay: Delay the execution of the script by a specified number of seconds"
+      echo "-ul|--update-from-logs: Update status from log files"
+      echo "-h|--help: Display this help message"
+      exit 0
+      ;;
+    --) # end argument parsing
+      shift
+      break
+      ;;
+    -*|--*=) # unsupported flags
+      echo "Error: Unsupported flag $1" >&2
+      exit 1
+      ;;
+    *) # preserve positional arguments
+      PARAMS="$PARAMS $1"
+      shift
+      ;;
+  esac
+done
+# Set positional arguments in their proper place
+eval set -- "$PARAMS"
+
+# Load conda environment if not macos
+if [[ "$OSTYPE" != "darwin"* ]]; then
+    conda activate ucltrees
+    debug=false
+fi
+
+
+# Delay the execution of the script if delay argument is greater than 0
+if [ $delay -gt 0 ]
+then
+    sleep "$delay"
+fi
+
+# Check if update_from_logs argument is true
+if [ "$update_from_logs" = true ]
+then
+    # Call update_status.py with --update-from-logs
+    python "$SCRIPT_DIR"/python/update_status.py --update-from-logs
+fi
+
+# Check if upload argument is true
+if [ "$upload" = true ]
+then
+    # Upload the report
+    if [ "$debug" = true ]
+    then
+        python "$SCRIPT_DIR"/python/make_report.py --upload --log-dir "$log_dir" --debug
+    else
+        python "$SCRIPT_DIR"/python/make_report.py --upload --log-dir "$log_dir"
+    fi
+    # Generate the local report as well
+    if [ "$debug" = true ]
+    then
+        python "$SCRIPT_DIR"/python/make_report.py --log-dir "$log_dir" --debug
+    else
+        python "$SCRIPT_DIR"/python/make_report.py --log-dir "$log_dir"
+    fi
+else
+    if [ "$debug" = true ]
+    then
+        python "$SCRIPT_DIR"/python/make_report.py --log-dir "$log_dir" --debug
+    else
+        python "$SCRIPT_DIR"/python/make_report.py --log-dir "$log_dir"
+    fi
+fi

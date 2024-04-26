@@ -1,0 +1,81 @@
+#!/bin/bash
+#
+# This script creates the directory structure for a project in the scratch space
+# on the JASMIN system. The project directory structure is defined in the
+# config/ucltrees_config.txt file.
+
+# Get the scratch root from the SCRATCH_ROOT environment variable
+scratch_root="$SCRATCH_ROOT"
+
+# Get the config_dir from the first command line argument
+config_file="$1"
+
+# If config_dir is not provided, set it to $USER/dev/ucltrees
+if [ -z "$config_file" ]; then
+    config_dir="$CONFIG_DIR"
+    config_file="$CONFIG_FILE"
+fi
+
+echo "Creating directories in $scratch_root"
+echo "scratch_root: $scratch_root"
+echo "config_file: $config_file"
+echo "=============================="
+echo ""
+
+# Make scratch_root if it does not exist
+mkdir -p "$scratch_root"
+
+# Make a sbatch_logs directory if it does not exist:
+mkdir -p "$scratch_root/sbatch_logs"
+
+# Read each line in the project_config.txt file
+while IFS= read -r line || [[ -n "$line" ]]
+do
+
+    # Extract the project name and path
+    project_name=$(echo "$line" | cut -d ',' -f 1 | xargs)
+    project_path=$(echo "$line" | cut -d ',' -f 2 | xargs)
+
+    echo "Processing project: $project_name"
+    echo "Project path: $project_path"
+    echo "=============================="
+
+    # Check if the project_name variable is empty
+    if [ -z "$project_name" ]; then
+        echo "Error: Failed to read a line from the projects.txt file"
+        exit 1
+    fi
+
+    # Create the project directory in scratch_root
+    mkdir -p "$scratch_root/$project_name"
+
+    # Create the subdirectories in scratch_root
+    mkdir -p "$scratch_root/$project_name/fsct"
+    mkdir -p "$scratch_root/$project_name/downsample"
+    mkdir -p "$scratch_root/$project_name/rxp2ply"
+    mkdir -p "$scratch_root/$project_name/clouds"
+    mkdir -p "$scratch_root/$project_name/figures"
+    mkdir -p "$scratch_root/$project_name/models/intermediate/inputs"
+    mkdir -p "$scratch_root/$project_name/models/intermediate/results"
+    mkdir -p "$scratch_root/$project_name/models/optqsm/commands"
+    mkdir -p "$scratch_root/$project_name/models/optqsm/results"
+
+    # if the project path does not exist create it
+    if [ ! -d "$project_path" ]; then
+        echo "Project directory does not exist: $project_path"
+        echo "Creating project directory: $project_path"
+        mkdir -p "$project_path"
+    fi
+
+    # Make the raw directory in the project path if it does not exist
+    mkdir -p "$project_path/raw"
+
+
+    # Print out what has been done
+    echo "Created directories for project $project_name in $scratch_root"
+    echo "Created subdirectories: fsct, sbatch_logs, downsample, rxp2ply, clouds, models"
+    echo "Created directories for $project_name in $project_path if it did not exist"
+    echo "Created raw directory in $project_name if it did not exist"
+    echo ""
+done < "$config_file"
+echo "All done"

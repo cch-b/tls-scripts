@@ -1,0 +1,50 @@
+#!/bin/bash
+#
+# Runs the optqsm script
+
+# Source the functions from functions.sh
+source "$SCRIPT_DIR/utils/functions.sh"
+
+# EDIT: Define the script, its path and arguments
+script_name="submit_jobs-run_optqsm-array.py"
+script_path="$SCRIPT_DIR/jobs"
+script_args="" # see below
+log_name="STEP09_run_optqsm"  # If blank, the log name will be the script name
+mode="bg" # Default mode is background
+
+script_code() {
+  echo "Running..."
+  ############################################
+  ## Put the script specific code here
+  ## This executes in the project directory ##
+  ############################################
+
+  # Activate the conda environment
+  conda activate octave
+
+  # Define the directories
+  commands_dir="$SCRATCH_ROOT/$project_name/models/optqsm/commands"
+  results_dir="$SCRATCH_ROOT/$project_name/models/optqsm/results"
+  job_script="$SCRIPT_DIR/jobs/run_optqsm_array.sh"
+
+  # Set the name of the sbatch_log_dirs which are defined in the array job #sbatch directives
+  # Used by execute task to add to log file
+  sbatch_log_dir="/work/scratch-pw3/ucfacc2/sbatch_logs/optqsm/"
+
+   # Compose the script arguments
+  script_args="--input $commands_dir --output $results_dir --project $project_name --job $job_script --user $USER"
+
+  ############################################
+  ## End of the script specific code here   ##
+  ############################################
+}
+
+# Call the functions defined in functions.sh
+# This needs to be in the right order.
+parse_arguments "$@"
+check_project_name
+check_projects_file
+change_directory
+script_code
+generate_command
+run_command

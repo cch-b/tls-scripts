@@ -1,0 +1,59 @@
+#!/bin/bash
+#
+# Generates the tree-attributes.csv file
+
+# Source the functions from functions.sh
+source "$SCRIPT_DIR/utils/functions.sh"
+
+# EDIT: Define the script, its path and arguments
+script_name="plot-reports.py"
+script_path="$SCRIPT_DIR/python"
+script_args="" # see below
+log_name="STEP10_generate_results"  # If blank, the log name will be the script name
+mode="bg" # Default mode is background
+
+script_code() {
+  echo "Running..."
+  ############################################
+  ## Put the script specific code here
+  ## This executes in the project directory ##
+  ############################################
+
+  # Activate the conda environment
+  conda activate pdal
+
+  # Define the directories
+  matrix_dir="$project_path/matrix/"
+  cloud_dir="$SCRATCH_ROOT/$project_name/clouds/"
+  results_dir="$SCRATCH_ROOT/$project_name/attributes/"
+  models_dir="$SCRATCH_ROOT/$project_name/models/optqsm/results/"
+
+  attributes_file="$project_path/$project_name.tree-attributes.csv"
+
+    # Check if project_name is lpg_01 or fg6c2
+  if [ "$project_name" = "lpg_01" ]; then
+    global_matrix="$project_path/2022_to_2016_rotation.dat"
+  fi
+
+  # Compose the script arguments
+  script_args="--clouds $cloud_dir --models $models_dir  --matrix $matrix_dir --outfile $attributes_file"
+
+  # Add --global-matrix if the global matrix is defined
+  if [ -n "$global_matrix" ]; then
+    script_args="$script_args --global-matrix $global_matrix"
+  fi
+
+  ############################################
+  ## End of the script specific code here   ##
+  ############################################
+}
+
+# Call the functions defined in functions.sh
+# This needs to be in the right order.
+parse_arguments "$@"
+check_project_name
+check_projects_file
+change_directory
+script_code
+generate_command
+run_command
